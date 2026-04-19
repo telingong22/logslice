@@ -21,6 +21,11 @@ class TestFormatRecord:
         parsed = json.loads(result)
         assert parsed == SAMPLE
 
+    def test_json_explicit(self):
+        result = format_record(SAMPLE, fmt=FORMAT_JSON)
+        parsed = json.loads(result)
+        assert parsed == SAMPLE
+
     def test_logfmt_simple(self):
         record = {"level": "info", "code": 200}
         result = format_record(record, fmt=FORMAT_LOGFMT)
@@ -53,6 +58,13 @@ class TestWriteRecords:
         records = [{"a": i} for i in range(10)]
         count = write_records(records, out=out, limit=4)
         assert count == 4
+
+    def test_limit_zero(self):
+        out = io.StringIO()
+        records = [{"a": i} for i in range(10)]
+        count = write_records(records, out=out, limit=0)
+        assert count == 0
+        assert out.getvalue() == ""
 
     def test_empty(self):
         out = io.StringIO()
