@@ -21,19 +21,23 @@ def _run_with_stdin(args, stdin_data):
             return code, mock_out.getvalue()
 
 
+def _parsed_lines(out):
+    """Return a list of parsed JSON objects from CLI output, skipping blank lines."""
+    return [json.loads(l) for l in out.strip().split("\n") if l]
+
+
 class TestCLI:
     def test_no_filters_returns_all(self):
         code, out = _run_with_stdin([], JSON_LINES)
         assert code == 0
-        lines = [l for l in out.strip().split("\n") if l]
-        assert len(lines) == 3
+        assert len(_parsed_lines(out)) == 3
 
     def test_match_filter(self):
         code, out = _run_with_stdin(["--match", "level=error"], JSON_LINES)
         assert code == 0
-        lines = [l for l in out.strip().split("\n") if l]
+        lines = _parsed_lines(out)
         assert len(lines) == 1
-        assert json.loads(lines[0])["level"] == "error"
+        assert lines[0]["level"] == "error"
 
     def test_time_range_filter(self):
         code, out = _run_with_stdin(
@@ -41,15 +45,14 @@ class TestCLI:
             JSON_LINES,
         )
         assert code == 0
-        lines = [l for l in out.strip().split("\n") if l]
+        lines = _parsed_lines(out)
         assert len(lines) == 1
-        assert json.loads(lines[0])["level"] == "error"
+        assert lines[0]["level"] == "error"
 
     def test_limit(self):
         code, out = _run_with_stdin(["--limit", "1"], JSON_LINES)
         assert code == 0
-        lines = [l for l in out.strip().split("\n") if l]
-        assert len(lines) == 1
+        assert len(_parsed_lines(out)) == 1
 
     def test_invalid_match_returns_2(self):
         code, _ = _run_with_stdin(["--match", "badvalue"], JSON_LINES)
