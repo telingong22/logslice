@@ -50,3 +50,14 @@ def summarise(records: Iterable[Dict[str, Any]], field: str) -> Dict[str, Any]:
 def top_n(counter: Counter, n: int = 10) -> List[tuple]:
     """Return the *n* most common entries from a Counter."""
     return counter.most_common(n)
+
+
+def filter_by(records: Iterable[Dict[str, Any]], field: str, value: Any) -> List[Dict[str, Any]]:
+    """Return records where *field* matches *value*.
+
+    Comparison is performed after converting both the record value and the
+    target *value* to strings, so callers do not need to worry about type
+    mismatches between numeric log fields and string query values.
+    """
+    target = str(value)
+    return [record for record in records if str(record.get(field, "")) == target]
