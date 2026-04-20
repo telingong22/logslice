@@ -1,79 +1,105 @@
-"""CLI sub-command: rate — show events-per-interval for a log stream."""
+"""CLI integration for the rate subcommand.
+
+Exposes --rate-field, --interval, --start, --end and --format options
+so users can compute per-interval event rates directly from the CLI.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from typing import IO, List
+from typing import Iterable, Iterator
 
-from logslice.rate import compute_rate
+from logslice.parser import parse_line
+from logslice.rate import compute_rate, rate_records
 
 
-def add_rate_args(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
-    p = subparsers.add_parser(
-        "rate",
-        help="Compute events-per-interval from a JSON log stream.",
+def add_rate_args(parser: argparse.ArgumentParser) -> None:
+    """Attach rate-specific arguments to *parser*."""
+    parser.add_argument(
+        "--rate-field",
+        default="timestamp",
+        metavar="FIELD",
+        help="Field used to bucket events (default: timestamp).",
     )
-    p.add_argument(
+    parser.add_argument(
         "--interval",
-        type=float,
-        default=60.0,
+        type=int,
+        default=60,
         metavar="SECONDS",
         help="Bucket width in seconds (default: 60).",
     )
-    p.add_argument(
-        "--ts-field",
-        default="timestamp",
-        metavar="FIELD",
-        help="Record field containing a Unix timestamp (default: timestamp).",
+    parser.add_argument(
+        "--start",
+        default=None,
+        metavar="ISO_DATETIME",
+        help="Discard events before this timestamp.",
     )
-    p.add_argument(
+    parser.add_argument(
+        "--end",
+        default=None,
+        metavar="ISO_DATETIME",
+        help="Discard events after this timestamp.",
+    )
+    parser.add_argument(
         "--format",
         choices=["json", "text"],
         default="json",
-        help="Output format (default: json).",
+        help="Output format: json (default) or text.",
     )
-    p.set_defaults(func=run_rate)
 
 
-def _read_records(stream: IO[str]) -> List[dict]:
-    records = []
+def _read_records(stream: Iterable[str]) -> Iterator[dict]:
+    """Yield parsed records from *stream*, skipping unparseable lines."""
     for line in stream:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            records.append(json.loads(line))
-        except json.JSONDecodeError:
-            pass
-    return records
+        record = parse_line(line)
+        if record is not None:
+            yield record
 
 
-def run_rate(args: argparse.Namespace, stream: IO[str] = sys.stdin) -> bool:
-    records = _read_records(stream)
-    rate_data = compute_rate(
+def run_rate(args: argparse.Namespace, stream: Iterable[str] | None = None) -> bool:
+    """Execute the rate subcommand.
+
+    Reads records from *stream* (or ``sys.stdin`` when *stream* is ``None``),
+    computes per-interval counts and writes results to ``sys.stdout``.
+
+    Returns ``True`` on success.
+    """
+    if stream is None:
+        stream = sys.stdin
+
+    records = list(_read_records(stream))
+
+    buckets = compute_rate(
         records,
-        interval_seconds=args.interval,
-        ts_field=args.ts_field,
+        field=args.rate_field,
+        interval=args.interval,
+        start=getattr(args, "start", None),
+        end=getattr(args, "end", None),
     )
-    for row in rate_data:
-        if args.format == "json":
-            print(json.dumps(row))
+
+    rate_recs = list(rate_records(buckets))
+
+    fmt = getattr(args, "format", "json")
+    for rec in rate_recs:
+        if fmt == "json":
+            sys.stdout.write(json.dumps(rec) + "\n")
         else:
-            print(
-                f"bucket={row['bucket']:.0f}  count={row['count']}  "
-                f"rate_per_sec={row['rate_per_sec']}"
-            )
+            bucket = rec.get("bucket", "")
+            count = rec.get("count", 0)
+            rate = rec.get("rate", 0.0)
+            sys.stdout.write(f"{bucket}  count={count}  rate={rate:.4f}/s\n")
+
     return True
 
 
 def main() -> None:  # pragma: no cover
-    parser = argparse.ArgumentParser(prog="logslice-rate")
-    subs = parser.add_subparsers()
-    add_rate_args(subs)
+    """Standalone entry point for ``logslice-rate``."""
+    parser = argparse.ArgumentParser(
+        prog="logslice-rate",
+        description="Compute per-interval event rates from structured log streams.",
+    )
+    add_rate_args(parser)
     args = parser.parse_args()
-    if hasattr(args, "func"):
-        args.func(args)
-    else:
-        parser.print_help()
+    run_rate(args)
