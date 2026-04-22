@@ -43,6 +43,10 @@ class TestFormatRecord:
         assert result.startswith("---")
         assert "level: warn" in result
 
+    def test_unknown_format_raises(self):
+        with pytest.raises((ValueError, KeyError)):
+            format_record(SAMPLE, fmt="invalid_format")
+
 
 class TestWriteRecords:
     def test_writes_all(self):
@@ -71,3 +75,12 @@ class TestWriteRecords:
         count = write_records([], out=out)
         assert count == 0
         assert out.getvalue() == ""
+
+    def test_format_passed_through(self):
+        """Verify write_records respects the fmt argument."""
+        out = io.StringIO()
+        records = [{"level": "info", "msg": "hi"}]
+        write_records(records, out=out, fmt=FORMAT_LOGFMT)
+        output = out.getvalue()
+        assert "level=info" in output
+        assert "msg=hi" in output
