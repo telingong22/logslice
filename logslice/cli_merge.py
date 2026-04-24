@@ -29,6 +29,18 @@ def add_diff_args(subparsers) -> None:
     p.set_defaults(func=_run_diff)
 
 
+def _open_file(path: str):
+    """Open a file for reading, exiting with a clear message if it cannot be found."""
+    try:
+        return open(path)
+    except FileNotFoundError:
+        print(f"error: file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    except PermissionError:
+        print(f"error: permission denied: {path}", file=sys.stderr)
+        sys.exit(1)
+
+
 def _run_merge(args) -> None:
     streams = []
     for path in args.files:
@@ -37,7 +49,7 @@ def _run_merge(args) -> None:
         from logslice.parser import parse_line
 
         def _read(p):
-            with open(p) as fh:
+            with _open_file(p) as fh:
                 for line in fh:
                     line = line.rstrip("\n")
                     if line:
