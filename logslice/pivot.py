@@ -38,6 +38,11 @@ def pivot_to_records(
 
     aggregate: 'list' | 'count' | 'first' | 'last'
     """
+    valid_aggregates = {"list", "count", "first", "last"}
+    if aggregate not in valid_aggregates:
+        raise ValueError(
+            f"Invalid aggregate {aggregate!r}. Must be one of: {', '.join(sorted(valid_aggregates))}"
+        )
     for key, values in collected.items():
         if aggregate == "count":
             agg_value: Any = len(values)
