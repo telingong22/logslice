@@ -19,11 +19,18 @@ class TestSampleRate:
         with pytest.raises(ValueError):
             list(sample_rate(RECORDS, 1.5))
 
+    def test_rate_negative_invalid(self):
+        with pytest.raises(ValueError):
+            list(sample_rate(RECORDS, -0.5))
+
     def test_rate_half_roughly_half(self):
         import random
         random.seed(42)
         result = list(sample_rate(RECORDS, 0.5))
         assert 30 <= len(result) <= 70
+
+    def test_empty_input(self):
+        assert list(sample_rate([], 0.5)) == []
 
 
 class TestSampleEveryN:
@@ -44,6 +51,10 @@ class TestSampleEveryN:
     def test_n_zero_invalid(self):
         with pytest.raises(ValueError):
             list(sample_every_n(RECORDS, 0))
+
+    def test_n_negative_invalid(self):
+        with pytest.raises(ValueError):
+            list(sample_every_n(RECORDS, -1))
 
     def test_empty_input(self):
         assert list(sample_every_n([], 5)) == []
@@ -66,6 +77,10 @@ class TestReservoirSample:
     def test_k_zero_invalid(self):
         with pytest.raises(ValueError):
             reservoir_sample(RECORDS, 0)
+
+    def test_k_negative_invalid(self):
+        with pytest.raises(ValueError):
+            reservoir_sample(RECORDS, -5)
 
     def test_empty_input(self):
         assert reservoir_sample([], 5) == []
