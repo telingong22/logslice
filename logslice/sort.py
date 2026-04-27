@@ -21,15 +21,6 @@ def sort_records(
     """
     sentinel = object()
 
-    def _key(record: dict):
-        val = record.get(field, sentinel)
-        if val is sentinel:
-            # missing values go last (or first if reverse)
-            return (1, "") if missing_last else (0, "")
-        return (0, val) if not reverse else (0, val)
-
-    collected = list(records)
-
     def sort_key(record: dict):
         val = record.get(field, sentinel)
         missing = val is sentinel
@@ -38,6 +29,7 @@ def sort_records(
         else:
             return (0 if missing else 1, "" if missing else val)
 
+    collected = list(records)
     yield from sorted(collected, key=sort_key, reverse=reverse)
 
 
