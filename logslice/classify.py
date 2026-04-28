@@ -1,13 +1,15 @@
-"""classify.py — Assign a category label to log records based on field rules.
+"""Record classification based on rule sets.
 
+Rules are evaluated in order; the first matching rule wins.
 Each rule is a dict with:
-  - field:    the record field to inspect
-  - pattern:  a regex pattern to match against the string value (optional)
-  - value:    an exact value to compare against (optional)
-  - label:    the category string to assign when the rule matches
+  - ``field``:   field name to inspect (dot-notation supported)
+  - ``pattern``: regex pattern to match against the string value
+  - ``equals``:  exact equality check (alternative to pattern)
+  - ``lt`` / ``gt`` / ``lte`` / ``gte``: numeric comparisons
+  - ``label``:   classification label to assign when the rule matches
 
-Rules are evaluated in order; the first match wins.  If no rule matches,
-the record receives the *default* label (empty string by default).
+If no rule matches, the record receives the ``default`` label
+(``"unclassified"`` unless overridden).
 """
 
 from __future__ import annotations
@@ -19,55 +21,68 @@ Record = Dict[str, Any]
 Rule = Dict[str, Any]
 
 
-def _get(record: Record, field: str) -> Optional[Any]:
-    """Return the value at *field*, supporting simple dot-notation nesting."""
+def _get(record: Record, field: str) -> Any:
+    """Retrieve a possibly-nested value using dot notation."""
     parts = field.split(".")
-    obj: Any = record
+    val: Any = record
     for part in parts:
-        if not isinstance(obj, dict):
+        if not isinstance(val, dict):
             return None
-        obj = obj.get(part)
-    return obj
+        val = val.get(part)
+    return val
 
 
 def _matches_rule(record: Record, rule: Rule) -> bool:
-    """Return True if *record* satisfies *rule*."""
-    field = rule.get("field", "")
+    """Return True if *record* satisfies every condition in *rule*."""
+    field = rule.get("field")
+    if field is None:
+        return False
+
     value = _get(record, field)
 
-    # Exact value match
-    if "value" in rule:
-        return value == rule["value"]
-
-    # Regex pattern match (coerce field value to string)
+    # Pattern match (regex against string representation)
     if "pattern" in rule:
         if value is None:
             return False
         try:
-            return bool(re.search(rule["pattern"], str(value)))
+            if not re.search(rule["pattern"], str(value)):
+                return False
         except re.error:
             return False
 
-    # A rule with only a field name matches when the field is present and truthy
-    return bool(value)
+    # Exact equality
+    if "equals" in rule:
+        if value != rule["equals"]:
+            return False
+
+    # Numeric comparisons — skip if value cannot be coerced
+    if any(k in rule for k in ("lt", "gt", "lte", "gte")):
+        try:
+            num = float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+        if "lt" in rule and not (num < float(rule["lt"])):
+            return False
+        if "gt" in rule and not (num > float(rule["gt"])):
+            return False
+        if "lte" in rule and not (num <= float(rule["lte"])):
+            return False
+        if "gte" in rule and not (num >= float(rule["gte"])):
+            return False
+
+    return True
 
 
 def classify_record(
     record: Record,
     rules: List[Rule],
-    label_field: str = "category",
-    default: str = "",
+    *,
+    label_field: str = "class",
+    default: str = "unclassified",
 ) -> Record:
     """Return a copy of *record* with a classification label added.
 
-    Args:
-        record:      The input log record.
-        rules:       Ordered list of rule dicts (see module docstring).
-        label_field: The key under which the label is stored.
-        default:     Label to use when no rule matches.
-
-    Returns:
-        A new dict with *label_field* set to the matched label or *default*.
+    Rules are evaluated in definition order; the first match wins.
     """
     result = dict(record)
     for rule in rules:
@@ -81,34 +96,32 @@ def classify_record(
 def classify_records(
     records: Iterable[Record],
     rules: List[Rule],
-    label_field: str = "category",
-    default: str = "",
+    *,
+    label_field: str = "class",
+    default: str = "unclassified",
 ) -> Iterator[Record]:
-    """Yield classified copies of every record in *records*.
-
-    Args:
-        records:     Iterable of log record dicts.
-        rules:       Ordered list of classification rules.
-        label_field: Destination field for the label.
-        default:     Fallback label when no rule matches.
-    """
+    """Classify every record in *records* according to *rules*."""
     for record in records:
-        yield classify_record(record, rules, label_field=label_field, default=default)
+        yield classify_record(
+            record, rules, label_field=label_field, default=default
+        )
 
 
 def group_by_class(
     records: Iterable[Record],
     rules: List[Rule],
-    label_field: str = "category",
-    default: str = "",
+    *,
+    label_field: str = "class",
+    default: str = "unclassified",
 ) -> Dict[str, List[Record]]:
-    """Classify all records and bucket them by label.
+    """Classify records and bucket them by their assigned label.
 
-    Returns:
-        A dict mapping each label to the list of records that received it.
+    Returns a dict mapping label -> list of classified records.
     """
-    buckets: Dict[str, List[Record]] = {}
-    for record in classify_records(records, rules, label_field=label_field, default=default):
+    groups: Dict[str, List[Record]] = {}
+    for record in classify_records(
+        records, rules, label_field=label_field, default=default
+    ):
         label = record.get(label_field, default)
-        buckets.setdefault(label, []).append(record)
-    return buckets
+        groups.setdefault(str(label), []).append(record)
+    return groups
