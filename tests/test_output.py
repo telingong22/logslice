@@ -47,6 +47,16 @@ class TestFormatRecord:
         with pytest.raises((ValueError, KeyError)):
             format_record(SAMPLE, fmt="invalid_format")
 
+    def test_json_output_is_single_line(self):
+        """JSON output should be a single line with no embedded newlines."""
+        result = format_record(SAMPLE, fmt=FORMAT_JSON)
+        assert "\n" not in result
+
+    def test_logfmt_empty_record(self):
+        """An empty record should produce an empty or whitespace-only logfmt string."""
+        result = format_record({}, fmt=FORMAT_LOGFMT)
+        assert result.strip() == ""
+
 
 class TestWriteRecords:
     def test_writes_all(self):
@@ -84,3 +94,13 @@ class TestWriteRecords:
         output = out.getvalue()
         assert "level=info" in output
         assert "msg=hi" in output
+
+    def test_each_record_on_own_line(self):
+        """Each written record should be separated by a newline."""
+        out = io.StringIO()
+        records = [{"a": 1}, {"a": 2}]
+        write_records(records, out=out, fmt=FORMAT_JSON)
+        lines = [l for l in out.getvalue().split("\n") if l.strip()]
+        assert len(lines) == 2
+        for line in lines:
+            json.loads(line)  # each line must be valid JSON
